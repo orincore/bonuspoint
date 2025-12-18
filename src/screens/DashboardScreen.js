@@ -10,15 +10,20 @@ import {
   Modal,
   Image,
   Platform,
+  ScrollView,
+  useWindowDimensions,
+  Easing,
 } from 'react-native';
 import Svg, {Circle, Path} from 'react-native-svg';
 import DeviceInfo from 'react-native-device-info';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-
-const {width, height} = Dimensions.get('window');
+const {width: screenWidth} = Dimensions.get('window');
 
 const DashboardScreen = () => {
+  const {width, height} = useWindowDimensions();
+  const isLandscape = width > height;
+  
   const [showDialog, setShowDialog] = useState(false);
   
   // Real device data states
@@ -29,12 +34,22 @@ const DashboardScreen = () => {
   // Animation values for progress indicators
   const batteryProgress = useRef(new Animated.Value(0)).current;
   const rangeProgress = useRef(new Animated.Value(0)).current;
-  const temperatureProgress = useRef(new Animated.Value(0)).current;
   
-  // Animation values for battery bars (dynamic based on battery level)
-  const batteryBarAnimations = useRef(
-    Array.from({length: 9}, () => new Animated.Value(0))
-  ).current;
+  // Card entrance animations - opacity and slide
+  const batteryCardOpacity = useRef(new Animated.Value(0)).current;
+  const batteryCardSlide = useRef(new Animated.Value(20)).current;
+  const rangeCardOpacity = useRef(new Animated.Value(0)).current;
+  const rangeCardSlide = useRef(new Animated.Value(20)).current;
+  const tempCardOpacity = useRef(new Animated.Value(0)).current;
+  const tempCardSlide = useRef(new Animated.Value(20)).current;
+  
+  // Card press animations
+  const batteryPressAnim = useRef(new Animated.Value(1)).current;
+  const rangePressAnim = useRef(new Animated.Value(1)).current;
+  const tempPressAnim = useRef(new Animated.Value(1)).current;
+  
+  // Header animation
+  const headerOpacity = useRef(new Animated.Value(0)).current;
 
   // Fetch real device data
   const fetchDeviceData = async () => {
@@ -79,11 +94,81 @@ const DashboardScreen = () => {
   }, []);
 
   useEffect(() => {
-    // Start animations when battery level is loaded
+    // Start entrance animations on mount
+    animateEntrance();
+  }, []);
+
+  useEffect(() => {
+    // Start progress animations when battery level is loaded
     if (batteryLevel > 0) {
       animateProgress();
     }
   }, [batteryLevel, batteryTemperature]);
+
+  // Professional staggered entrance animations
+  const animateEntrance = () => {
+    // Header fades in first
+    Animated.timing(headerOpacity, {
+      toValue: 1,
+      duration: 300,
+      easing: Easing.out(Easing.ease),
+      useNativeDriver: true,
+    }).start();
+    
+    // Battery card - fade + slide up
+    Animated.parallel([
+      Animated.timing(batteryCardOpacity, {
+        toValue: 1,
+        duration: 400,
+        delay: 150,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(batteryCardSlide, {
+        toValue: 0,
+        duration: 400,
+        delay: 150,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    // Range card - fade + slide up (staggered)
+    Animated.parallel([
+      Animated.timing(rangeCardOpacity, {
+        toValue: 1,
+        duration: 400,
+        delay: 250,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(rangeCardSlide, {
+        toValue: 0,
+        duration: 400,
+        delay: 250,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+    
+    // Temperature card - fade + slide up (staggered)
+    Animated.parallel([
+      Animated.timing(tempCardOpacity, {
+        toValue: 1,
+        duration: 400,
+        delay: 350,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
+      }),
+      Animated.timing(tempCardSlide, {
+        toValue: 0,
+        duration: 400,
+        delay: 350,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
 
   // Calculate how many bars should be filled based on battery percentage
   const getFilledBarsCount = (percent) => {
@@ -97,81 +182,58 @@ const DashboardScreen = () => {
   };
 
   const animateProgress = () => {
-    const filledBars = getFilledBarsCount(batteryLevel);
-    
-    // Reset all bar animations
-    batteryBarAnimations.forEach(anim => anim.setValue(0));
-    
-    // Animate battery bars filling from bottom based on real battery level
-    const barAnimations = [];
-    for (let i = 0; i < filledBars; i++) {
-      barAnimations.push(
-        Animated.timing(batteryBarAnimations[i], {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: false,
-        })
-      );
-    }
-    
-    if (barAnimations.length > 0) {
-      Animated.sequence(barAnimations).start();
-    }
-
-    // Animate other progress indicators with real data
+    // Smooth progress animations with easing
     const estimatedRange = getEstimatedRange(batteryLevel);
     
-    Animated.stagger(300, [
-      Animated.timing(batteryProgress, {
-        toValue: batteryLevel / 100,
-        duration: 1500,
-        useNativeDriver: false,
+    Animated.timing(batteryProgress, {
+      toValue: batteryLevel / 100,
+      duration: 1000,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+    
+    Animated.timing(rangeProgress, {
+      toValue: estimatedRange / 200,
+      duration: 1000,
+      delay: 200,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+  };
+
+  // Professional press animation for cards - subtle and smooth
+  const animateCardPress = (pressAnim) => {
+    Animated.sequence([
+      Animated.timing(pressAnim, {
+        toValue: 0.96,
+        duration: 80,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
       }),
-      Animated.timing(rangeProgress, {
-        toValue: estimatedRange / 200,
-        duration: 1500,
-        useNativeDriver: false,
-      }),
-      Animated.timing(temperatureProgress, {
+      Animated.timing(pressAnim, {
         toValue: 1,
-        duration: 1500,
-        useNativeDriver: false,
+        duration: 150,
+        easing: Easing.out(Easing.ease),
+        useNativeDriver: true,
       }),
     ]).start();
   };
 
   const handleCardPress = (cardType) => {
-    // Refresh data and restart animation for selected card
-    fetchDeviceData();
-    
-    const estimatedRange = getEstimatedRange(batteryLevel);
-    
+    // Simple press animation based on card type
     switch (cardType) {
       case 'battery':
-        batteryProgress.setValue(0);
-        Animated.timing(batteryProgress, {
-          toValue: batteryLevel / 100,
-          duration: 1000,
-          useNativeDriver: false,
-        }).start();
+        animateCardPress(batteryPressAnim);
         break;
       case 'range':
-        rangeProgress.setValue(0);
-        Animated.timing(rangeProgress, {
-          toValue: estimatedRange / 200,
-          duration: 1000,
-          useNativeDriver: false,
-        }).start();
+        animateCardPress(rangePressAnim);
         break;
       case 'temperature':
-        temperatureProgress.setValue(0);
-        Animated.timing(temperatureProgress, {
-          toValue: 1,
-          duration: 1000,
-          useNativeDriver: false,
-        }).start();
+        animateCardPress(tempPressAnim);
         break;
     }
+    // Refresh data
+    fetchDeviceData();
   };
 
   const handleTitleBarPress = () => {
@@ -222,37 +284,20 @@ const DashboardScreen = () => {
     const bars = [];
     for (let i = totalBars - 1; i >= 0; i--) {
       const isFilled = i < filledBars;
-      const animIndex = i; // Animation index from bottom
-      
-      if (isFilled) {
-        bars.push(
-          <Animated.View 
-            key={i}
-            style={[
-              styles.batterySegmentFilled, 
-              {
-                opacity: batteryBarAnimations[animIndex],
-                transform: [{
-                  scaleY: batteryBarAnimations[animIndex].interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0, 1],
-                  })
-                }]
-              }
-            ]} 
-          />
-        );
-      } else {
-        bars.push(<View key={i} style={styles.batterySegmentEmpty} />);
-      }
+      bars.push(
+        <View 
+          key={i}
+          style={isFilled ? styles.batterySegmentFilled : styles.batterySegmentEmpty} 
+        />
+      );
     }
     
     return (
       <View style={styles.batteryVisual}>
         <View style={styles.batteryOuterContainer}>
-          <View style={styles.batteryTopTab} />
+          <View style={[styles.batteryTopTab, isLandscape && {width: 28}]} />
           <View style={styles.batteryBodyWrapper}>
-            <View style={styles.batteryBodyBorder}>
+            <View style={[styles.batteryBodyBorder, isLandscape && {height: dynamicStyles.batteryBodyBorder.height, width: dynamicStyles.batteryBodyBorder.width}]}>
               {/* Percentage at top of battery - real data */}
               <View style={styles.batteryPercentRow}>
                 <Text style={styles.batteryPercentText}>
@@ -274,50 +319,46 @@ const DashboardScreen = () => {
   };
 
   const TemperatureMiniChart = () => {
-    // Create 20 bars representing temperature distribution
-    const totalBars = 20;
+    // Create bars representing temperature distribution
+    const totalBars = isLandscape ? 24 : 20;
     const filledBars = Math.round((batteryTemperature / 60) * totalBars);
     
     const bars = Array.from({length: totalBars}, (_, idx) => {
       const isFilled = idx < filledBars;
-      // Create wave-like height pattern
-      const baseHeight = 20 + Math.sin((idx / totalBars) * Math.PI * 2) * 15 + (idx / totalBars) * 30;
+      // Create smooth wave-like height pattern
+      const progress = idx / totalBars;
+      const baseHeight = 25 + Math.sin(progress * Math.PI * 2) * 15 + progress * 35;
       
       let color;
       if (!isFilled) {
-        color = '#E0E0E0';
+        color = '#E8E8E8';
       } else {
-        // Gradient from green to red based on position
+        // Smooth gradient from green to red
         const position = idx / filledBars;
-        if (position < 0.3) color = '#4CAF50';
-        else if (position < 0.5) color = '#8BC34A';
-        else if (position < 0.7) color = '#FDD835';
-        else if (position < 0.85) color = '#FF6F00';
+        if (position < 0.25) color = '#4CAF50';
+        else if (position < 0.45) color = '#8BC34A';
+        else if (position < 0.65) color = '#FDD835';
+        else if (position < 0.82) color = '#FF9800';
         else color = '#E53935';
       }
       
       return {h: Math.round(baseHeight), c: color};
     });
 
+    // Scale bar heights for landscape - fill available space
+    const heightMultiplier = isLandscape ? 2.8 : 1;
+    
     return (
-      <View style={styles.tempMiniChartRow}>
+      <View style={[styles.tempMiniChartRow, isLandscape && styles.tempMiniChartRowLandscape]}>
         {bars.map((b, idx) => (
-          <Animated.View
+          <View
             key={String(idx)}
             style={[
               styles.tempMiniChartBar,
+              isLandscape && styles.tempMiniChartBarLandscape,
               {
                 backgroundColor: b.c,
-                height: temperatureProgress.interpolate({
-                  inputRange: [0, (idx + 1) / bars.length, 1],
-                  outputRange: [0, b.h, b.h],
-                  extrapolate: 'clamp',
-                }),
-                opacity: temperatureProgress.interpolate({
-                  inputRange: [0, (idx + 1) / bars.length],
-                  outputRange: [0.3, 1],
-                  extrapolate: 'clamp',
-                }),
+                height: b.h * heightMultiplier,
               },
             ]}
           />
@@ -337,73 +378,182 @@ const DashboardScreen = () => {
 
   const estimatedRange = getEstimatedRange(batteryLevel);
 
+  // Dynamic styles based on orientation - fully responsive
+  const landscapeCardHeight = Math.min(height * 0.75, 300);
+  const portraitCardHeight = 380;
+  const cardHeight = isLandscape ? landscapeCardHeight : portraitCardHeight;
+  const batteryBodyHeight = isLandscape ? landscapeCardHeight - 80 : 280;
+  
+  const dynamicStyles = {
+    headerArea: {
+      minHeight: isLandscape ? 56 : 100,
+      paddingTop: isLandscape ? 8 : 20,
+      paddingBottom: isLandscape ? 8 : 20,
+    },
+    mainContent: {
+      paddingHorizontal: isLandscape ? 16 : 16,
+      paddingTop: isLandscape ? 8 : 20,
+      paddingBottom: 20,
+    },
+    cardsRow: {
+      flexDirection: 'row',
+      gap: isLandscape ? 10 : 14,
+    },
+    batteryCard: {
+      width: isLandscape ? width * 0.2 : '38%',
+      height: cardHeight,
+    },
+    rightColumn: {
+      flex: 1,
+      height: cardHeight,
+      flexDirection: isLandscape ? 'row' : 'column',
+      gap: isLandscape ? 10 : 10,
+    },
+    rangeCard: {
+      flex: isLandscape ? 1 : undefined,
+      height: isLandscape ? cardHeight : 190,
+    },
+    temperatureCard: {
+      flex: isLandscape ? 1 : undefined,
+      height: isLandscape ? cardHeight : 180,
+    },
+    batteryBodyBorder: {
+      height: batteryBodyHeight,
+      width: isLandscape ? 90 : 110,
+    },
+    circularProgress: {
+      size: isLandscape ? Math.min(landscapeCardHeight * 0.5, 120) : 110,
+    },
+    tempChartHeight: {
+      height: isLandscape ? landscapeCardHeight - 60 : 100,
+    },
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#e7f0eb" translucent={false} />
 
-      <View style={styles.headerArea}>
-        <View style={styles.titleBar}>
-          <View style={styles.redSquare} />
-          <View style={styles.headerSpacer} />
-          <View style={styles.headerRightActions}>
-            <Image 
-              source={require('../assets/Referral 2.png')} 
-              style={styles.referralImage}
-              resizeMode="contain"
-            />
-            <TouchableOpacity style={styles.iconButton} activeOpacity={0.8}>
-              <BellIcon />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton} activeOpacity={0.8} onPress={handleTitleBarPress}>
-              <View style={styles.menuLine} />
-              <View style={styles.menuLine} />
-              <View style={styles.menuLine} />
-            </TouchableOpacity>
+      {/* Scrollable content including header */}
+      <ScrollView 
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces={true}
+      >
+        {/* Header inside ScrollView for landscape scrolling */}
+        <Animated.View style={[styles.headerArea, dynamicStyles.headerArea, {opacity: headerOpacity}]}>
+          <View style={[styles.titleBar, isLandscape && styles.titleBarLandscape]}>
+            <View style={[styles.redSquare, isLandscape && styles.redSquareLandscape]} />
+            <View style={styles.headerSpacer} />
+            <View style={styles.headerRightActions}>
+              <Image 
+                source={require('../assets/Referral 2.png')} 
+                style={[styles.referralImage, isLandscape && styles.referralImageLandscape]}
+                resizeMode="contain"
+              />
+              <TouchableOpacity style={[styles.iconButton, isLandscape && styles.iconButtonLandscape]} activeOpacity={0.7}>
+                <BellIcon />
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.iconButton, isLandscape && styles.iconButtonLandscape]} activeOpacity={0.7} onPress={handleTitleBarPress}>
+                <View style={styles.menuLine} />
+                <View style={styles.menuLine} />
+                <View style={styles.menuLine} />
+              </TouchableOpacity>
+            </View>
           </View>
-        </View>
-      </View>
+        </Animated.View>
+        {/* Main Content */}
+        <View style={[styles.mainContent, dynamicStyles.mainContent]}>
+          <View style={[styles.cardsRow, dynamicStyles.cardsRow]}>
+            {/* Battery Card */}
+            <Animated.View
+              style={[
+                dynamicStyles.batteryCard,
+                {
+                  opacity: batteryCardOpacity,
+                  transform: [
+                    {translateY: batteryCardSlide},
+                    {scale: batteryPressAnim},
+                  ],
+                },
+              ]}>
+              <TouchableOpacity 
+                style={[styles.batteryCard, {width: '100%', height: '100%'}]} 
+                onPress={() => handleCardPress('battery')} 
+                activeOpacity={1}
+              >
+                <Text style={[styles.cardTitle, isLandscape && styles.cardTitleLandscape]}>Battery</Text>
+                <BatteryIcon />
+              </TouchableOpacity>
+            </Animated.View>
 
-      {/* Main Content */}
-      <View style={styles.mainContent}>
-        <View style={styles.cardsRow}>
-          {/* Battery Card */}
-          <TouchableOpacity style={styles.batteryCard} onPress={() => handleCardPress('battery')} activeOpacity={0.9}>
-            <Text style={styles.cardTitle}>Battery</Text>
-            <BatteryIcon />
-          </TouchableOpacity>
-
-          {/* Right Column */}
-          <View style={styles.rightColumn}>
-            <TouchableOpacity style={styles.rangeCard} onPress={() => handleCardPress('range')} activeOpacity={0.9}>
-              <View style={styles.rangeHeaderRow}>
-                <Text style={styles.cardTitle}>Estimated{'\n'}Range</Text>
-                <View style={styles.rangeHeaderRight}>
-                  <Text style={styles.rangeValueLarge}>{estimatedRange} <Text style={styles.rangeUnitSmall}>kms</Text></Text>
-                </View>
-              </View>
-              <View style={styles.rangeContent}>
-                <View style={styles.rangeProgressWrap}>
-                  <CircularProgress progress={rangeProgress} size={110} strokeWidth={10} color="#cd4a4a" />
-                  <View style={styles.rangeCenterText}>
-                    <Text style={styles.rangeCenterTop}>{estimatedRange}/200</Text>
-                    <Text style={styles.rangeCenterBottom}>kms</Text>
+            {/* Right Column */}
+            <View style={[styles.rightColumn, dynamicStyles.rightColumn]}>
+              {/* Range Card */}
+              <Animated.View
+                style={[
+                  dynamicStyles.rangeCard,
+                  {
+                    opacity: rangeCardOpacity,
+                    transform: [
+                      {translateY: rangeCardSlide},
+                      {scale: rangePressAnim},
+                    ],
+                  },
+                ]}>
+                <TouchableOpacity 
+                  style={[styles.rangeCard, {height: '100%'}]} 
+                  onPress={() => handleCardPress('range')} 
+                  activeOpacity={1}
+                >
+                  <View style={styles.rangeHeaderRow}>
+                    <Text style={[styles.cardTitle, isLandscape && styles.cardTitleLandscape]}>Estimated{'\n'}Range</Text>
+                    <View style={styles.rangeHeaderRight}>
+                      <Text style={[styles.rangeValueLarge, isLandscape && styles.rangeValueLandscape]}>{estimatedRange} <Text style={styles.rangeUnitSmall}>kms</Text></Text>
+                    </View>
                   </View>
-                </View>
-              </View>
-            </TouchableOpacity>
+                  <View style={styles.rangeContent}>
+                    <View style={[styles.rangeProgressWrap, {width: dynamicStyles.circularProgress.size, height: dynamicStyles.circularProgress.size}]}>
+                      <CircularProgress progress={rangeProgress} size={dynamicStyles.circularProgress.size} strokeWidth={isLandscape ? 6 : 8} color="#cd4a4a" />
+                      <View style={styles.rangeCenterText}>
+                        <Text style={[styles.rangeCenterTop, isLandscape && styles.rangeCenterTopLandscape]}>{estimatedRange}/200</Text>
+                        <Text style={[styles.rangeCenterBottom, isLandscape && styles.rangeCenterBottomLandscape]}>kms</Text>
+                      </View>
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              </Animated.View>
 
-            <TouchableOpacity style={styles.temperatureCard} onPress={() => handleCardPress('temperature')} activeOpacity={0.9}>
-              <View style={styles.tempHeaderRow}>
-                <Text style={styles.cardTitle}>Temperature</Text>
-                <Text style={styles.temperatureValue}>
-                  {batteryTemperature}<Text style={styles.temperatureUnit}>°C</Text>
-                </Text>
-              </View>
-              <TemperatureMiniChart />
-            </TouchableOpacity>
+              {/* Temperature Card */}
+              <Animated.View
+                style={[
+                  dynamicStyles.temperatureCard,
+                  {
+                    opacity: tempCardOpacity,
+                    transform: [
+                      {translateY: tempCardSlide},
+                      {scale: tempPressAnim},
+                    ],
+                  },
+                ]}>
+                <TouchableOpacity 
+                  style={[styles.temperatureCard, {height: '100%'}]} 
+                  onPress={() => handleCardPress('temperature')} 
+                  activeOpacity={1}
+                >
+                  <View style={styles.tempHeaderRow}>
+                    <Text style={[styles.cardTitle, isLandscape && styles.cardTitleLandscape]}>Temperature</Text>
+                    <Text style={[styles.temperatureValue, isLandscape && styles.temperatureValueLandscape]}>
+                      {batteryTemperature}<Text style={styles.temperatureUnit}>°C</Text>
+                    </Text>
+                  </View>
+                  <TemperatureMiniChart />
+                </TouchableOpacity>
+              </Animated.View>
+            </View>
           </View>
         </View>
-      </View>
+      </ScrollView>
 
       {/* Dialog Modal */}
       <Modal
@@ -438,21 +588,34 @@ const styles = StyleSheet.create({
   },
   headerArea: {
     backgroundColor: '#e7f0eb',
-    paddingTop: 20,
-    paddingBottom: 24,
-    height: height * 0.2,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
   },
   titleBar: {
     flexDirection: 'row',
     justifyContent: 'flex-start',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingTop: 16,
+    paddingTop: 12,
+  },
+  titleBarLandscape: {
+    paddingTop: 6,
+    paddingHorizontal: 16,
   },
   redSquare: {
     width: 44,
     height: 44,
-    backgroundColor: '#cd4a4a'
+    backgroundColor: '#cd4a4a',
+    borderRadius: 8,
+  },
+  redSquareLandscape: {
+    width: 38,
+    height: 38,
+    borderRadius: 6,
   },
   headerSpacer: {
     flex: 1,
@@ -460,21 +623,36 @@ const styles = StyleSheet.create({
   headerRightActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
   },
   referralImage: {
     width: 60,
     height: 60,
   },
+  referralImageLandscape: {
+    width: 40,
+    height: 40,
+  },
   iconButton: {
     width: 44,
     height: 44,
     backgroundColor: '#FFFFFF',
-    borderRadius: 12,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E0E0E0',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  iconButtonLandscape: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
   },
   menuLine: {
     width: 18,
@@ -485,8 +663,6 @@ const styles = StyleSheet.create({
   },
   mainContent: {
     flex: 1,
-    paddingHorizontal: 16,
-    paddingTop: 20,
     backgroundColor: '#F5F5F5',
   },
   cardsRow: {
@@ -494,28 +670,31 @@ const styles = StyleSheet.create({
     gap: 14,
     alignItems: 'flex-start',
   },
-  // Battery Card - 38% width
+  // Battery Card
   batteryCard: {
     backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 12,
-    paddingBottom: 12,
-    width: '38%',
-    height: 380,
+    borderRadius: 24,
+    padding: 16,
+    paddingBottom: 16,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 8,
     },
     shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowRadius: 24,
+    elevation: 6,
   },
   cardTitle: {
     fontSize: 14,
     color: '#8E8E8E',
     marginBottom: 8,
-    fontWeight: '400',
+    fontWeight: '500',
+    letterSpacing: 0.2,
+  },
+  cardTitleLandscape: {
+    fontSize: 12,
+    marginBottom: 6,
   },
   batteryVisual: {
     flex: 1,
@@ -526,12 +705,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   batteryTopTab: {
-    width: 36,
-    height: 8,
-    backgroundColor: '#f0f0f0',
-    borderTopLeftRadius: 4,
-    borderTopRightRadius: 4,
-    marginBottom: 1,
+    width: 40,
+    height: 10,
+    backgroundColor: '#EBEBEB',
+    borderTopLeftRadius: 5,
+    borderTopRightRadius: 5,
+    marginBottom: -2,
     zIndex: 1,
   },
   batteryBodyWrapper: {
@@ -541,26 +720,24 @@ const styles = StyleSheet.create({
     width: 110,
     height: 280,
     borderWidth: 3,
-    borderColor: '#f0f0f0',
-    borderRadius: 12,
-    backgroundColor: '#f0f0f0',
-    padding: 4,
+    borderColor: '#EBEBEB',
+    borderRadius: 14,
+    backgroundColor: '#F5F5F5',
+    padding: 6,
   },
   batteryInnerContent: {
     flex: 1,
-    gap: 4,
+    gap: 5,
   },
   batterySegmentEmpty: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
+    borderRadius: 5,
   },
   batterySegmentFilled: {
     flex: 1,
     backgroundColor: '#cd4a4a',
-    borderRadius: 4,
+    borderRadius: 5,
   },
   batteryPercentRow: {
     alignItems: 'center',
@@ -582,27 +759,24 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 2,
   },
-  // Right Column - 62% width
+  // Right Column
   rightColumn: {
-    width: '62%',
-    height: 380,
     gap: 10,
   },
   rangeCard: {
     backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 15,
-    paddingBottom: 18,
+    borderRadius: 24,
+    padding: 16,
+    paddingBottom: 16,
     marginRight: 16,
-    height: 190,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 8,
     },
     shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowRadius: 24,
+    elevation: 6,
   },
   rangeHeaderRow: {
     flexDirection: 'row',
@@ -619,6 +793,10 @@ const styles = StyleSheet.create({
     color: '#1E1E1E',
     lineHeight: 44,
     letterSpacing: -1,
+  },
+  rangeValueLandscape: {
+    fontSize: 20,
+    lineHeight: 32,
   },
   rangeUnitSmall: {
     fontSize: 11,
@@ -648,27 +826,32 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1E1E1E',
   },
+  rangeCenterTopLandscape: {
+    fontSize: 12,
+  },
   rangeCenterBottom: {
     fontSize: 10,
     fontWeight: '400',
     color: '#9E9E9E',
     marginTop: -1,
   },
+  rangeCenterBottomLandscape: {
+    fontSize: 8,
+  },
   temperatureCard: {
     backgroundColor: 'white',
-    borderRadius: 20,
-    padding: 12,
+    borderRadius: 24,
+    padding: 16,
     paddingBottom: 12,
     marginRight: 16,
-    height: 180,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 8,
     },
     shadowOpacity: 0.06,
-    shadowRadius: 12,
-    elevation: 3,
+    shadowRadius: 24,
+    elevation: 6,
   },
   tempHeaderRow: {
     flexDirection: 'row',
@@ -682,6 +865,9 @@ const styles = StyleSheet.create({
     color: '#cd4a4a',
     letterSpacing: -1,
   },
+  temperatureValueLandscape: {
+    fontSize: 20,
+  },
   temperatureUnit: {
     fontSize: 14,
     fontWeight: '400',
@@ -690,15 +876,27 @@ const styles = StyleSheet.create({
   tempMiniChartRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
+    justifyContent: 'space-between',
     height: 100,
-    gap: 6,
+    flex: 1,
     paddingTop: 8,
+    paddingHorizontal: 4,
+  },
+  tempMiniChartRowLandscape: {
+    flex: 1,
     paddingHorizontal: 8,
+    paddingBottom: 8,
   },
   tempMiniChartBar: {
     flex: 1,
-    borderRadius: 1,
-    maxWidth: 2,
+    borderRadius: 2,
+    marginHorizontal: 1.5,
+    maxWidth: 8,
+  },
+  tempMiniChartBarLandscape: {
+    borderRadius: 3,
+    marginHorizontal: 2,
+    maxWidth: 12,
   },
   modalOverlay: {
     flex: 1,
@@ -708,33 +906,53 @@ const styles = StyleSheet.create({
   },
   dialogBox: {
     backgroundColor: 'white',
-    borderRadius: 16,
-    padding: 24,
-    width: width * 0.8,
+    borderRadius: 24,
+    padding: 28,
+    width: screenWidth * 0.8,
+    maxWidth: 320,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 16,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 32,
+    elevation: 12,
   },
   dialogTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    color: '#000',
+    fontSize: 20,
+    fontWeight: '600',
+    marginBottom: 20,
+    color: '#1E1E1E',
+    letterSpacing: -0.3,
   },
   dialogText: {
     fontSize: 16,
     color: '#666',
-    marginVertical: 8,
+    marginVertical: 10,
+    fontWeight: '400',
   },
   dialogButton: {
     backgroundColor: '#cd4a4a',
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 16,
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 14,
+    marginTop: 20,
+    shadowColor: '#cd4a4a',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 4,
   },
   dialogButtonText: {
     color: 'white',
     fontSize: 16,
-    fontWeight: 'bold',
+    fontWeight: '600',
+    letterSpacing: 0.3,
   },
 });
 
