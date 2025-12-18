@@ -1,6 +1,16 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# BonusPoint React Native App
 
-# Getting Started
+This is a React Native app built without Expo that implements a welcome screen with gift box animation and a dashboard with animated progress indicators.
+
+## Features
+
+- **Welcome Screen**: Congratulations screen with animated gift box, coin display, and navigation
+- **Dashboard Screen**: Battery, range, and temperature monitoring with animated progress indicators
+- **Animations**: Gift box click animation, progress bar animations, and smooth transitions
+- **Navigation**: Stack navigation between screens
+- **UI Design**: Matches exact design specifications with colors #679D77, #A6D0B7, #ED145B
+
+## Getting Started
 
 > **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
 
