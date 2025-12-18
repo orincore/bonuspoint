@@ -9,8 +9,10 @@ import {
   StatusBar,
   Modal,
   Image,
+  Platform,
 } from 'react-native';
 import Svg, {Circle, Path} from 'react-native-svg';
+import DeviceInfo from 'react-native-device-info';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 
@@ -18,32 +20,120 @@ const {width, height} = Dimensions.get('window');
 
 const DashboardScreen = () => {
   const [showDialog, setShowDialog] = useState(false);
-  const [selectedCard, setSelectedCard] = useState(null);
+  
+  // Real device data states
+  const [batteryLevel, setBatteryLevel] = useState(0);
+  const [batteryTemperature, setBatteryTemperature] = useState(0);
+  const [isCharging, setIsCharging] = useState(false);
   
   // Animation values for progress indicators
   const batteryProgress = useRef(new Animated.Value(0)).current;
   const rangeProgress = useRef(new Animated.Value(0)).current;
   const temperatureProgress = useRef(new Animated.Value(0)).current;
+  
+  // Animation values for battery bars (dynamic based on battery level)
+  const batteryBarAnimations = useRef(
+    Array.from({length: 9}, () => new Animated.Value(0))
+  ).current;
+
+  // Fetch real device data
+  const fetchDeviceData = async () => {
+    try {
+      // Get battery level (returns 0-1, we convert to percentage)
+      const level = await DeviceInfo.getBatteryLevel();
+      const levelPercent = Math.round(level * 100);
+      setBatteryLevel(levelPercent);
+      
+      // Get charging status
+      const charging = await DeviceInfo.isBatteryCharging();
+      setIsCharging(charging);
+      
+      // Get battery temperature
+      if (Platform.OS === 'android') {
+        // Android: Get battery temperature from power state
+        const powerState = await DeviceInfo.getPowerState();
+        // Battery temperature is typically between 25-45°C
+        setBatteryTemperature(Math.round(powerState.batteryTemperature || 35));
+      } else {
+        // iOS doesn't expose battery temperature, use estimate based on battery level
+        // Higher battery usage typically means higher temperature
+        const estimatedTemp = 28 + (levelPercent > 50 ? 5 : 0);
+        setBatteryTemperature(estimatedTemp);
+      }
+    } catch (error) {
+      console.log('Error fetching device data:', error);
+      // Fallback values
+      setBatteryLevel(29);
+      setBatteryTemperature(35);
+    }
+  };
 
   useEffect(() => {
-    // Start animations when component mounts
-    animateProgress();
+    // Fetch real device data on mount
+    fetchDeviceData();
+    
+    // Set up interval to refresh data every 30 seconds
+    const interval = setInterval(fetchDeviceData, 30000);
+    
+    return () => clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    // Start animations when battery level is loaded
+    if (batteryLevel > 0) {
+      animateProgress();
+    }
+  }, [batteryLevel, batteryTemperature]);
+
+  // Calculate how many bars should be filled based on battery percentage
+  const getFilledBarsCount = (percent) => {
+    // 9 total bars, calculate how many should be filled
+    return Math.ceil((percent / 100) * 9);
+  };
+
+  // Calculate estimated range based on battery (assuming 200km max range)
+  const getEstimatedRange = (percent) => {
+    return Math.round((percent / 100) * 200);
+  };
+
   const animateProgress = () => {
+    const filledBars = getFilledBarsCount(batteryLevel);
+    
+    // Reset all bar animations
+    batteryBarAnimations.forEach(anim => anim.setValue(0));
+    
+    // Animate battery bars filling from bottom based on real battery level
+    const barAnimations = [];
+    for (let i = 0; i < filledBars; i++) {
+      barAnimations.push(
+        Animated.timing(batteryBarAnimations[i], {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: false,
+        })
+      );
+    }
+    
+    if (barAnimations.length > 0) {
+      Animated.sequence(barAnimations).start();
+    }
+
+    // Animate other progress indicators with real data
+    const estimatedRange = getEstimatedRange(batteryLevel);
+    
     Animated.stagger(300, [
       Animated.timing(batteryProgress, {
-        toValue: 0.29, // 29%
+        toValue: batteryLevel / 100,
         duration: 1500,
         useNativeDriver: false,
       }),
       Animated.timing(rangeProgress, {
-        toValue: 0.12, // 24/200 = 0.12
+        toValue: estimatedRange / 200,
         duration: 1500,
         useNativeDriver: false,
       }),
       Animated.timing(temperatureProgress, {
-        toValue: 0.51, // 51/100 = 0.51
+        toValue: 1,
         duration: 1500,
         useNativeDriver: false,
       }),
@@ -51,13 +141,16 @@ const DashboardScreen = () => {
   };
 
   const handleCardPress = (cardType) => {
-    setSelectedCard(cardType);
-    // Reset and restart animation for selected card
+    // Refresh data and restart animation for selected card
+    fetchDeviceData();
+    
+    const estimatedRange = getEstimatedRange(batteryLevel);
+    
     switch (cardType) {
       case 'battery':
         batteryProgress.setValue(0);
         Animated.timing(batteryProgress, {
-          toValue: 0.29,
+          toValue: batteryLevel / 100,
           duration: 1000,
           useNativeDriver: false,
         }).start();
@@ -65,7 +158,7 @@ const DashboardScreen = () => {
       case 'range':
         rangeProgress.setValue(0);
         Animated.timing(rangeProgress, {
-          toValue: 0.12,
+          toValue: estimatedRange / 200,
           duration: 1000,
           useNativeDriver: false,
         }).start();
@@ -73,7 +166,7 @@ const DashboardScreen = () => {
       case 'temperature':
         temperatureProgress.setValue(0);
         Animated.timing(temperatureProgress, {
-          toValue: 0.51,
+          toValue: 1,
           duration: 1000,
           useNativeDriver: false,
         }).start();
@@ -122,32 +215,56 @@ const DashboardScreen = () => {
   };
 
   const BatteryIcon = () => {
+    const filledBars = getFilledBarsCount(batteryLevel);
+    const totalBars = 9;
+    
+    // Create array of bars (from top to bottom)
+    const bars = [];
+    for (let i = totalBars - 1; i >= 0; i--) {
+      const isFilled = i < filledBars;
+      const animIndex = i; // Animation index from bottom
+      
+      if (isFilled) {
+        bars.push(
+          <Animated.View 
+            key={i}
+            style={[
+              styles.batterySegmentFilled, 
+              {
+                opacity: batteryBarAnimations[animIndex],
+                transform: [{
+                  scaleY: batteryBarAnimations[animIndex].interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0, 1],
+                  })
+                }]
+              }
+            ]} 
+          />
+        );
+      } else {
+        bars.push(<View key={i} style={styles.batterySegmentEmpty} />);
+      }
+    }
+    
     return (
       <View style={styles.batteryVisual}>
         <View style={styles.batteryOuterContainer}>
           <View style={styles.batteryTopTab} />
           <View style={styles.batteryBodyWrapper}>
             <View style={styles.batteryBodyBorder}>
-              {/* Percentage at top of battery */}
+              {/* Percentage at top of battery - real data */}
               <View style={styles.batteryPercentRow}>
                 <Text style={styles.batteryPercentText}>
-                  29<Text style={styles.batteryPercentUnit}>%</Text>
+                  {batteryLevel}<Text style={styles.batteryPercentUnit}>%</Text>
                 </Text>
+                {isCharging && (
+                  <Text style={styles.chargingIndicator}>⚡</Text>
+                )}
               </View>
               
               <View style={styles.batteryInnerContent}>
-                {/* Empty white segments (7 bars) */}
-                <View style={styles.batterySegmentEmpty} />
-                <View style={styles.batterySegmentEmpty} />
-                <View style={styles.batterySegmentEmpty} />
-                <View style={styles.batterySegmentEmpty} />
-                <View style={styles.batterySegmentEmpty} />
-                <View style={styles.batterySegmentEmpty} />
-                <View style={styles.batterySegmentEmpty} />
-                
-                {/* 2 filled red segments at bottom */}
-                <View style={styles.batterySegmentFilled} />
-                <View style={styles.batterySegmentFilled} />
+                {bars}
               </View>
             </View>
           </View>
@@ -157,28 +274,30 @@ const DashboardScreen = () => {
   };
 
   const TemperatureMiniChart = () => {
-    const bars = [
-      {h: 22, c: '#4CAF50'},
-      {h: 28, c: '#4CAF50'},
-      {h: 26, c: '#66BB6A'},
-      {h: 32, c: '#66BB6A'},
-      {h: 35, c: '#8BC34A'},
-      {h: 38, c: '#8BC34A'},
-      {h: 42, c: '#FDD835'},
-      {h: 45, c: '#FDD835'},
-      {h: 48, c: '#FBC02D'},
-      {h: 52, c: '#FBC02D'},
-      {h: 50, c: '#FF6F00'},
-      {h: 48, c: '#FF6F00'},
-      {h: 44, c: '#E53935'},
-      {h: 40, c: '#E53935'},
-      {h: 36, c: '#D81B60'},
-      {h: 32, c: '#D81B60'},
-      {h: 20, c: '#E0E0E0'},
-      {h: 16, c: '#E0E0E0'},
-      {h: 14, c: '#E0E0E0'},
-      {h: 12, c: '#E0E0E0'},
-    ];
+    // Create 20 bars representing temperature distribution
+    const totalBars = 20;
+    const filledBars = Math.round((batteryTemperature / 60) * totalBars);
+    
+    const bars = Array.from({length: totalBars}, (_, idx) => {
+      const isFilled = idx < filledBars;
+      // Create wave-like height pattern
+      const baseHeight = 20 + Math.sin((idx / totalBars) * Math.PI * 2) * 15 + (idx / totalBars) * 30;
+      
+      let color;
+      if (!isFilled) {
+        color = '#E0E0E0';
+      } else {
+        // Gradient from green to red based on position
+        const position = idx / filledBars;
+        if (position < 0.3) color = '#4CAF50';
+        else if (position < 0.5) color = '#8BC34A';
+        else if (position < 0.7) color = '#FDD835';
+        else if (position < 0.85) color = '#FF6F00';
+        else color = '#E53935';
+      }
+      
+      return {h: Math.round(baseHeight), c: color};
+    });
 
     return (
       <View style={styles.tempMiniChartRow}>
@@ -188,8 +307,12 @@ const DashboardScreen = () => {
             style={[
               styles.tempMiniChartBar,
               {
-                height: b.h,
                 backgroundColor: b.c,
+                height: temperatureProgress.interpolate({
+                  inputRange: [0, (idx + 1) / bars.length, 1],
+                  outputRange: [0, b.h, b.h],
+                  extrapolate: 'clamp',
+                }),
                 opacity: temperatureProgress.interpolate({
                   inputRange: [0, (idx + 1) / bars.length],
                   outputRange: [0.3, 1],
@@ -212,27 +335,13 @@ const DashboardScreen = () => {
     </Svg>
   );
 
+  const estimatedRange = getEstimatedRange(batteryLevel);
+
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#e7f0eb" />
+      <StatusBar barStyle="dark-content" backgroundColor="#e7f0eb" translucent={false} />
 
       <View style={styles.headerArea}>
-        <View style={styles.statusBar}>
-          <Text style={styles.timeText}>08:00 AM</Text>
-          <View style={styles.statusIcons}>
-            <View style={styles.signalBars}>
-              <View style={[styles.signalBar, {height: 4}]} />
-              <View style={[styles.signalBar, {height: 7}]} />
-              <View style={[styles.signalBar, {height: 10}]} />
-              <View style={[styles.signalBar, {height: 13}]} />
-            </View>
-            <View style={styles.batteryStatusIcon}>
-              <View style={styles.batteryStatusBody} />
-              <View style={styles.batteryStatusTip} />
-            </View>
-          </View>
-        </View>
-
         <View style={styles.titleBar}>
           <View style={styles.redSquare} />
           <View style={styles.headerSpacer} />
@@ -269,14 +378,14 @@ const DashboardScreen = () => {
               <View style={styles.rangeHeaderRow}>
                 <Text style={styles.cardTitle}>Estimated{'\n'}Range</Text>
                 <View style={styles.rangeHeaderRight}>
-                  <Text style={styles.rangeValueLarge}>24 <Text style={styles.rangeUnitSmall}>kms</Text></Text>
+                  <Text style={styles.rangeValueLarge}>{estimatedRange} <Text style={styles.rangeUnitSmall}>kms</Text></Text>
                 </View>
               </View>
               <View style={styles.rangeContent}>
                 <View style={styles.rangeProgressWrap}>
                   <CircularProgress progress={rangeProgress} size={110} strokeWidth={10} color="#cd4a4a" />
                   <View style={styles.rangeCenterText}>
-                    <Text style={styles.rangeCenterTop}>24/200</Text>
+                    <Text style={styles.rangeCenterTop}>{estimatedRange}/200</Text>
                     <Text style={styles.rangeCenterBottom}>kms</Text>
                   </View>
                 </View>
@@ -287,7 +396,7 @@ const DashboardScreen = () => {
               <View style={styles.tempHeaderRow}>
                 <Text style={styles.cardTitle}>Temperature</Text>
                 <Text style={styles.temperatureValue}>
-                  51<Text style={styles.temperatureUnit}>°C</Text>
+                  {batteryTemperature}<Text style={styles.temperatureUnit}>°C</Text>
                 </Text>
               </View>
               <TemperatureMiniChart />
@@ -329,56 +438,9 @@ const styles = StyleSheet.create({
   },
   headerArea: {
     backgroundColor: '#e7f0eb',
-    paddingTop: 12,
+    paddingTop: 20,
     paddingBottom: 24,
-    height: height * 0.25,
-  },
-  statusBar: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 4,
-  },
-  timeText: {
-    fontSize: 13,
-    color: '#000',
-    fontWeight: '500',
-  },
-  statusIcons: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  signalBars: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 1.5,
-  },
-  signalBar: {
-    width: 3,
-    backgroundColor: '#000',
-    borderRadius: 1,
-  },
-  batteryStatusIcon: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  batteryStatusBody: {
-    width: 20,
-    height: 10,
-    borderWidth: 1.5,
-    borderColor: '#000',
-    borderRadius: 2,
-    backgroundColor: '#fff',
-  },
-  batteryStatusTip: {
-    width: 2,
-    height: 5,
-    backgroundColor: '#000',
-    marginLeft: -0.5,
-    borderTopRightRadius: 1,
-    borderBottomRightRadius: 1,
+    height: height * 0.2,
   },
   titleBar: {
     flexDirection: 'row',
@@ -515,6 +577,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#9E9E9E',
     fontWeight: '800',
+  },
+  chargingIndicator: {
+    fontSize: 14,
+    marginTop: 2,
   },
   // Right Column - 62% width
   rightColumn: {
